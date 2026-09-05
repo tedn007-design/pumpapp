@@ -35,6 +35,25 @@ friction_loss = (pipe_length / 100.0) * (flow_target / pipe_dia) * 2.2 * viscosi
 tdh = static_head + friction_loss
 estimated_power_kw = (flow_target * tdh * 9.81) / (1000 * 0.65)
 
+# --- PIPE PRESSURE RATING ADVISOR CALCULATIONS ---
+tdh_bar = tdh / 10.197  # Convert meters of head to bar pressure
+
+if tdh_bar <= 6.0:
+    recommended_pn = "PN6 (SDR 26)"
+    pn_status = "Success"
+elif tdh_bar <= 10.0:
+    recommended_pn = "PN10 (SDR 17)"
+    pn_status = "Success"
+elif tdh_bar <= 16.0:
+    recommended_pn = "PN16 (SDR 11)"
+    pn_status = "Success"
+elif tdh_bar <= 20.0:
+    recommended_pn = "PN20 (SDR 9)"
+    pn_status = "Warning"
+else:
+    recommended_pn = "EXCEEDS STANDARD HDPE"
+    pn_status = "Critical"
+
 # --- MAIN PANEL: RESULTS ---
 st.subheader("📊 System & Head Results")
 col1, col2, col3 = st.columns(3)
@@ -51,7 +70,7 @@ st.markdown("Found a pump online? Paste its link and its rated maximum specs bel
 with st.form(key="pump_validator_form"):
     col_link, col_name = st.columns([2, 1])
     with col_link:
-        pump_url = st.text_input("Pump Product URL", placeholder="https://www.supplier-catalog.com/pump-model-x")
+        pump_url = st.text_input("Pump Product URL", placeholder="https://supplier-catalog.com")
     with col_name:
         pump_model_name = st.text_input("Pump Model Name / Brand", placeholder="e.g., Toyo DP-30")
         
@@ -95,7 +114,7 @@ st.divider()
 
 # --- ELECTRICAL & PIPELINE HEALTH CHECKS ---
 st.subheader("⚡ Electrical & Pipeline Health Checks")
-col_gen, col_vel = st.columns(2)
+col_gen, col_vel, col_press = st.columns(3)
 
 with col_gen:
     st.markdown("#### Diesel Generator Sizing")
@@ -116,3 +135,15 @@ with col_vel:
         st.error("⚠️ **Too High (> 3.5 m/s):** High risk of erosion.")
     else:
         st.success("✅ **Optimal Velocity:** Ideal range (1.0 - 3.5 m/s).")
+
+with col_press:
+    st.markdown("#### Pipe Pressure Advisor")
+    if pn_status == "Success":
+        st.metric("Minimum Pipe Rating", recommended_pn, delta=f"{tdh_bar:.1f} bar req.")
+        st.success("✅ Safe using standard poly lines.")
+    elif pn_status == "Warning":
+        st.metric("Minimum Pipe Rating", recommended_pn, delta=f"{tdh_bar:.1f} bar req.", delta_color="inverse")
+        st.warning("⚠️ Heavy wall HDPE required.")
+    else:
+        st.metric("Pressure Error", recommended_pn, delta=f"{tdh_bar:.1f} bar!", delta_color="inverse")
+        st.error("🚨 OVERPRESSURE: Needs multi-stage setup!")
