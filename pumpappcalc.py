@@ -90,7 +90,6 @@ class MinePumpDatabase:
     def get_recommendation(self, head_required_m, flow_required_m3h, water_profile):
         is_slurry_requested = water_profile.lower() == "slurry"
         
-        # Range-based matching window conditions
         matches = self.df[
             (head_required_m >= self.df["Min_Head_m"]) & (head_required_m <= self.df["Max_Head_m"]) &
             (flow_required_m3h >= self.df["Min_Flow_m3h"]) & (flow_required_m3h <= self.df["Max_Flow_m3h"])
@@ -122,22 +121,38 @@ discharge_rl = st.sidebar.number_input("Surface Discharge Point Level (RL in met
 # AUTOMATED PIPE LENGTH LOGIC BASED ON HEIGHT DIFFERENCE
 static_head = discharge_rl - sump_rl
 
-# Avoid calculation errors if user types an inverse geometry profile
 if static_head <= 0:
     st.sidebar.error("Discharge RL must be higher than Sump RL.")
     static_head = 1.0
 
-# Pit pipes travel up a ramp (1 in 10 mining grade = 10% slope angle). 
-# Distance traveled up ramp = vertical height * 10
+# 1 in 10 mining grade haul road gradient geometry calculation
 base_ramp_length = static_head * 10.0
 
 st.sidebar.markdown(f"**Calculated Minimum Ramp Pipe Length:** `{base_ramp_length:.0f} m` *(based on 1:10 haul road gradient)*")
 pipe_slack_m = st.sidebar.number_input("Additional Pipe Slack / Surface Run (m)", value=50.0, step=10.0)
 
-# Unified length used for downstream equations
+# Unified layout length used across all hydraulic math equations
 pipe_length = base_ramp_length + pipe_slack_m
 
 pipe_dia = st.sidebar.selectbox("HDPE Pipe Diameter (mm)", [100, 150, 200, 250, 300], index=1)
+
+# --- REAL-WORLD WEIGHT CALCULATIONS (PE100 PN16 / SDR11 Specs) ---
+# Approximate weight per meter metrics for standard mining poly sizes (kg/m)
+weight_lookup_kg_m = {100: 3.2, 150: 7.1, 200: 12.3, 250: 19.1, 300: 27.5}
+unit_weight = weight_lookup_kg_m.get(pipe_dia, 7.1)
+total_pipeline_weight_kg = pipe_length * unit_weight
+total_pipeline_weight_tonnes = total_pipeline_weight_kg / 1000.0
+
+# --- STAGING & ENVELOPE REDIRECT LOGIC ---
+# Standard high-head dewatering single-stage limit boundary rule (m)
+SINGLE_STAGE_MAX_HEAD = 130.0
+is_multistage_required = static_head > SINGLE_STAGE_MAX_HEAD
+
+if is_multistage_required:
+    active_calc_head = SINGLE_STAGE_MAX_HEAD
+    recommended_booster_rl = sump_rl + SINGLE_STAGE_MAX_HEAD
+else:
+    active_calc_head = static_head
 
 # --- HYDRAULIC CALCULATIONS ---
 viscosity_multiplier = {
@@ -146,11 +161,11 @@ viscosity_multiplier = {
     "Heavy Slurry / Gritty": 1.35
 }[fluid_type]
 
-# Unit conversion for matching the algorithm dataset bounds (L/s to m3/h)
 flow_m3h = flow_target * 3.6
 
+# Friction loss is bounded strictly to the active extraction lift stage
 friction_loss = (pipe_length / 100.0) * (flow_target / pipe_dia) * 2.2 * viscosity_multiplier
-tdh = static_head + friction_loss
+tdh = active_calc_head + friction_loss
 estimated_power_kw = (flow_target * tdh * 9.81) / (1000 * 0.65)
 
 # --- PIPE PRESSURE RATING ADVISOR CALCULATIONS ---
@@ -174,17 +189,22 @@ else:
 
 # --- MAIN PANEL: RESULTS ---
 st.subheader("📊 System & Head Results")
+
+# Render alert message box layout if multi-stage staging limits are breached
+if is_multistage_required:
+    st.warning(f"🚨 **Multi-Stage Staging System Advised:** Total vertical lift ({static_head:.0f}m) exceeds efficient single-stage mining boundaries ({SINGLE_STAGE_MAX_HEAD:.0f}m). **Downstream calculations have been auto-bounded to a Single Stage execution.** You must install a mid-pit booster staging station at or below **RL {recommended_booster_rl:.0f}m**.")
+
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Required Flow Window", f"{flow_target:.1f} L/s", delta=f"{flow_m3h:.0f} m³/h equivalent")
-col2.metric("Total Dynamic Head (TDH)", f"{tdh:.1f} m", delta=f"Incl. {friction_loss:.1f}m friction")
-col3.metric("Auto Pipe Length", f"{pipe_length:.0f} m", delta=f"Vertical Lift: {static_head:.0f}m")
+col2.metric("Total Dynamic Head (TDH)", f"{tdh:.1f} m", delta=f"Single Stage Target Lift: {active_calc_head:.0f}m")
+col3.metric("Auto Pipe Length", f"{pipe_length:.0f} m", delta=f"Total Total Lift: {static_head:.0f}m")
 col4.metric("Est. Shaft Power", f"{estimated_power_kw:.1f} kW")
 
 st.divider()
 
 # --- AUTOMATED RANGE-BASED MATCH RECOMMENDATIONS ---
 st.subheader("🏆 Performance Window Range Match Matrix")
-st.markdown("The algorithm screens manufacturer operating windows to find pumps where your system requirements drop directly into the **Optimal Performance Range**:")
+st.markdown("The algorithm screens manufacturer operating windows to find single-stage pumps matching your calculated target boundaries:")
 
 db_fluid_profile = "Clear" if "Clean" in fluid_type else ("Slurry" if "Heavy" in fluid_type else "Dirty")
 
@@ -195,31 +215,12 @@ recommendations = pump_selector.get_recommendation(
 )
 
 if recommendations is None or recommendations.empty:
-    st.error("❌ **No Single Pump Matches This Operating Window Range:** Your current combination of flow and head requirements sits outside standard performance curves. Adjust your sliders (e.g., increase pipe diameter to lower friction head, or select a lower flow target) or plan a multi-pump mid-pit staging setup.")
+    st.error("❌ **No Single Pump Matches This Operating Window Range:** Your current combination of flow and head requirements sits outside standard performance curves. Adjust your sliders (e.g., increase pipe diameter to lower friction head, or select a lower flow target) or plan an aggressive multi-pump mid-pit staging setup.")
 else:
-    st.success(f"✅ Found **{len(recommendations)} standard industry assets** where your target requirements sit within optimal operational parameters:")
+    st.success(f"✅ Found **{len(recommendations)} standard industry assets** compatible with your single-stage design curve specs:")
     
     for idx, row in recommendations.iterrows():
         with st.expander(f"👉 **{row['Manufacturer']} - {row['Model']}** (Ideal Range Fit)"):
             c_card1, c_card2 = st.columns(2)
             with c_card1:
                 st.markdown(f"**Operational Role:** {row['Best_For']}")
-                st.markdown(f"**Fluid Capability Classification:** Characterized for `{row['Water_Type']}` profiles.")
-                st.markdown(f"**Max Permissible Solid Diameter:** Passing up to **{row['Max_Solids_mm']} mm** fragments.")
-            with c_card2:
-                st.markdown(f"📊 **Engineered Operational Window Range:**")
-                st.markdown(f"*   **Optimal Head Range:** `{row['Min_Head_m']} m` up to `{row['Max_Head_m']} m`")
-                st.markdown(f"*   **Optimal Flow Range:** `{row['Min_Flow_m3h']} m³/h` up to `{row['Max_Flow_m3h']} m³/h`")
-                st.caption(f"🔧 **Drive Layout:** {row['Drive_Type']}")
-
-st.divider()
-
-# --- ELECTRICAL & PIPELINE HEALTH CHECKS ---
-st.subheader("⚡ Electrical & Pipeline Health Checks")
-col_gen, col_vel, col_press = st.columns(3)
-
-with col_gen:
-    st.markdown("#### Diesel Generator Sizing")
-    motor_efficiency = 0.85
-    generator_power_kva = (estimated_power_kw / motor_efficiency) * 1.25 / 0.8 
-    st.metric("Minimum Recommended Genset", f"{generator_power_kva:.0f} kVA")
