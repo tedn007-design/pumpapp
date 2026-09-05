@@ -194,11 +194,13 @@ st.subheader("System Results Summary")
 if is_multistage_required:
     st.error(f"Setup Warning: The vertical lift ({static_head:.0f}m) is too high for a standard single pump setup ({SINGLE_STAGE_MAX_HEAD:.0f}m limit). The calculations below have been limited to a Single Stage layout. You will need to add a second booster pump station around RL {recommended_booster_rl:.0f}m.")
 
-col1, col2, col3, col4 = st.columns(4)
+# Upgraded to 5 columns to cleanly show pipeline mass at the top of the interface
+col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("Pumping Speed", f"{flow_target:.1f} L/s", delta=f"{flow_m3h:.0f} m³/h equivalent")
 col2.metric("Total Pumping Head", f"{tdh:.1f} m", delta=f"Includes {friction_loss:.1f}m pipe friction")
 col3.metric("Total Pipe Needed", f"{pipe_length:.0f} m", delta=f"Vertical Lift: {static_head:.0f}m")
 col4.metric("Estimated Motor Power", f"{estimated_power_kw:.1f} kW")
+col5.metric("Total Pipe Weight", f"{total_pipeline_weight_tonnes:.2f} t", delta=f"{unit_weight_kg_m:.1f} kg/m")
 
 st.divider()
 
@@ -228,5 +230,3 @@ else:
                 st.markdown(f"**Maximum solid size:** Can pass dirt/debris up to **{row['Max_Solids_mm']} mm**.")
             with c_card2:
                 st.markdown(f"**Pump Capabilities:**")
-                st.markdown(f"*   **Safe Head Range:** `{row['Min_Head_m']} m` to `{row['Max_Head_m']} m`")
-                st.markdown(f"*   **Safe Flow Range:** `{row['Min_Flow_m3h']} m³/h` to `{row['Max_Flow_m3h']} m³/h`")
