@@ -9,15 +9,16 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CLASS DEFINITION: INTEGRATED MANUFACTURER DATABASE ---
+# --- CLASS DEFINITION: ADVANCED PERFORMANCE RANGE DATABASE ---
 class MinePumpDatabase:
     def __init__(self):
+        # Initializing manufacturer datasets with real-world optimal operating boundaries
         self.pumps_db = [
             {
                 "Manufacturer": "Weir Minerals (Warman)",
                 "Model": "Warman DWU",
-                "Max_Flow_m3h": 1200,
-                "Max_Head_m": 130,
+                "Min_Flow_m3h": 400, "Max_Flow_m3h": 1200,
+                "Min_Head_m": 40, "Max_Head_m": 130,
                 "Water_Type": "Slurry / Dirty",
                 "Max_Solids_mm": 40.0,
                 "Drive_Type": "Electric / Diesel",
@@ -26,8 +27,8 @@ class MinePumpDatabase:
             {
                 "Manufacturer": "Weir Minerals (Multiflo)",
                 "Model": "Multiflo RF Series",
-                "Max_Flow_m3h": 2200,
-                "Max_Head_m": 220,
+                "Min_Flow_m3h": 600, "Max_Flow_m3h": 2200,
+                "Min_Head_m": 60, "Max_Head_m": 220,
                 "Water_Type": "Dirty / Runoff",
                 "Max_Solids_mm": 60.0,
                 "Drive_Type": "Diesel",
@@ -36,8 +37,8 @@ class MinePumpDatabase:
             {
                 "Manufacturer": "Xylem (Godwin)",
                 "Model": "Godwin Dri-Prime CD200M",
-                "Max_Flow_m3h": 520,
-                "Max_Head_m": 50,
+                "Min_Flow_m3h": 150, "Max_Flow_m3h": 520,
+                "Min_Head_m": 15, "Max_Head_m": 50,
                 "Water_Type": "Dirty / Runoff",
                 "Max_Solids_mm": 75.0,
                 "Drive_Type": "Diesel",
@@ -46,8 +47,8 @@ class MinePumpDatabase:
             {
                 "Manufacturer": "KSB Australia",
                 "Model": "UPA 200 Borehole",
-                "Max_Flow_m3h": 1000,
-                "Max_Head_m": 420,
+                "Min_Flow_m3h": 200, "Max_Flow_m3h": 1000,
+                "Min_Head_m": 100, "Max_Head_m": 420,
                 "Water_Type": "Clear / Saline",
                 "Max_Solids_mm": 2.0,
                 "Drive_Type": "Electric",
@@ -56,8 +57,8 @@ class MinePumpDatabase:
             {
                 "Manufacturer": "KSB Australia",
                 "Model": "Multitec Horizontal",
-                "Max_Flow_m3h": 1500,
-                "Max_Head_m": 1000,
+                "Min_Flow_m3h": 300, "Max_Flow_m3h": 1500,
+                "Min_Head_m": 250, "Max_Head_m": 1000,
                 "Water_Type": "Clear / Low-Solids",
                 "Max_Solids_mm": 5.0,
                 "Drive_Type": "Electric / Diesel",
@@ -66,8 +67,8 @@ class MinePumpDatabase:
             {
                 "Manufacturer": "Sykes Group",
                 "Model": "Sykes XH200-636",
-                "Max_Flow_m3h": 828,
-                "Max_Head_m": 208,
+                "Min_Flow_m3h": 250, "Max_Flow_m3h": 828,
+                "Min_Head_m": 70, "Max_Head_m": 208,
                 "Water_Type": "Dirty / Runoff",
                 "Max_Solids_mm": 31.0,
                 "Drive_Type": "Diesel",
@@ -76,8 +77,8 @@ class MinePumpDatabase:
             {
                 "Manufacturer": "Pioneer Pump",
                 "Model": "PP Series High-Head",
-                "Max_Flow_m3h": 1800,
-                "Max_Head_m": 210,
+                "Min_Flow_m3h": 400, "Max_Flow_m3h": 1800,
+                "Min_Head_m": 60, "Max_Head_m": 210,
                 "Water_Type": "Dirty / Runoff",
                 "Max_Solids_mm": 76.0,
                 "Drive_Type": "Diesel / Electric",
@@ -89,9 +90,10 @@ class MinePumpDatabase:
     def get_recommendation(self, head_required_m, flow_required_m3h, water_profile):
         is_slurry_requested = water_profile.lower() == "slurry"
         
+        # Range-based matching window conditions
         matches = self.df[
-            (self.df["Max_Head_m"] >= head_required_m) & 
-            (self.df["Max_Flow_m3h"] >= flow_required_m3h)
+            (head_required_m >= self.df["Min_Head_m"]) & (head_required_m <= self.df["Max_Head_m"]) &
+            (flow_required_m3h >= self.df["Min_Flow_m3h"]) & (flow_required_m3h <= self.df["Max_Flow_m3h"])
         ]
         
         if is_slurry_requested:
@@ -100,35 +102,51 @@ class MinePumpDatabase:
         if matches.empty:
             return None
             
-        return matches.sort_values(by=["Max_Head_m", "Max_Flow_m3h"], ascending=True)
+        return matches.sort_values(by=["Max_Head_m"], ascending=True)
 
 # --- INIT DATABASE ---
 pump_selector = MinePumpDatabase()
 
 st.title("⛏️ Open-Pit Sump Dewatering & Pump Sizer")
-st.markdown("A practical sizing tool built for non-specialists to quickly calculate head, check pipe velocity, and auto-recommend matching industry pumps.")
+st.markdown("A practical sizing tool built for non-specialists to automatically calculate geometric lengths, map performance ranges, and select matching industry pumps.")
 
 # --- SIDEBAR: INPUTS ---
 st.sidebar.header("1. Site & Fluid Inputs")
-flow_target = st.sidebar.number_input("Target Inflow / Pumping Rate (L/s)", value=30.0, step=5.0, format="%.1f")
+flow_target = st.sidebar.number_input("Target Pumping Rate (L/s)", value=30.0, step=5.0, format="%.1f")
 fluid_type = st.sidebar.selectbox("Water Condition", ["Clean / Rainwater", "Light Mud / Silty", "Heavy Slurry / Gritty"])
 
-st.sidebar.header("2. Geometry & Pipe Layout")
+st.sidebar.header("2. Geometry & Pit Layout")
 sump_rl = st.sidebar.number_input("Sump Floor Level (RL in meters)", value=100.0, step=1.0)
 discharge_rl = st.sidebar.number_input("Surface Discharge Point Level (RL in meters)", value=220.0, step=1.0)
-pipe_length = st.sidebar.number_input("Total Pipe Length (m)", value=450.0, step=10.0)
+
+# AUTOMATED PIPE LENGTH LOGIC BASED ON HEIGHT DIFFERENCE
+static_head = discharge_rl - sump_rl
+
+# Avoid calculation errors if user types an inverse geometry profile
+if static_head <= 0:
+    st.sidebar.error("Discharge RL must be higher than Sump RL.")
+    static_head = 1.0
+
+# Pit pipes travel up a ramp (1 in 10 mining grade = 10% slope angle). 
+# Distance traveled up ramp = vertical height * 10
+base_ramp_length = static_head * 10.0
+
+st.sidebar.markdown(f"**Calculated Minimum Ramp Pipe Length:** `{base_ramp_length:.0f} m` *(based on 1:10 haul road gradient)*")
+pipe_slack_m = st.sidebar.number_input("Additional Pipe Slack / Surface Run (m)", value=50.0, step=10.0)
+
+# Unified length used for downstream equations
+pipe_length = base_ramp_length + pipe_slack_m
+
 pipe_dia = st.sidebar.selectbox("HDPE Pipe Diameter (mm)", [100, 150, 200, 250, 300], index=1)
 
 # --- HYDRAULIC CALCULATIONS ---
-static_head = discharge_rl - sump_rl
-
 viscosity_multiplier = {
     "Clean / Rainwater": 1.0, 
     "Light Mud / Silty": 1.15, 
     "Heavy Slurry / Gritty": 1.35
 }[fluid_type]
 
-# Unit conversion for matching the algorithm dataset (L/s to m3/h)
+# Unit conversion for matching the algorithm dataset bounds (L/s to m3/h)
 flow_m3h = flow_target * 3.6
 
 friction_loss = (pipe_length / 100.0) * (flow_target / pipe_dia) * 2.2 * viscosity_multiplier
@@ -156,18 +174,18 @@ else:
 
 # --- MAIN PANEL: RESULTS ---
 st.subheader("📊 System & Head Results")
-col1, col2, col3 = st.columns(3)
-col1.metric("Required Flow", f"{flow_target:.1f} L/s", delta=f"{flow_m3h:.0f} m³/h equivalent")
-col2.metric("Total Dynamic Head (TDH)", f"{tdh:.1f} m")
-col3.metric("Est. Shaft Power", f"{estimated_power_kw:.1f} kW")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Required Flow Window", f"{flow_target:.1f} L/s", delta=f"{flow_m3h:.0f} m³/h equivalent")
+col2.metric("Total Dynamic Head (TDH)", f"{tdh:.1f} m", delta=f"Incl. {friction_loss:.1f}m friction")
+col3.metric("Auto Pipe Length", f"{pipe_length:.0f} m", delta=f"Vertical Lift: {static_head:.0f}m")
+col4.metric("Est. Shaft Power", f"{estimated_power_kw:.1f} kW")
 
 st.divider()
 
-# --- AUTOMATED DATABASE MATCHING RECOMMENDATIONS ---
-st.subheader("🏆 Automated Fleet & Manufacturer Match Matrix")
-st.markdown("The system has cross-referenced your system curve against heavy industrial mining assets from **Weir Minerals, Xylem, KSB, and Sykes**:")
+# --- AUTOMATED RANGE-BASED MATCH RECOMMENDATIONS ---
+st.subheader("🏆 Performance Window Range Match Matrix")
+st.markdown("The algorithm screens manufacturer operating windows to find pumps where your system requirements drop directly into the **Optimal Performance Range**:")
 
-# Map interface select box text cleanly into database profile triggers
 db_fluid_profile = "Clear" if "Clean" in fluid_type else ("Slurry" if "Heavy" in fluid_type else "Dirty")
 
 recommendations = pump_selector.get_recommendation(
@@ -176,22 +194,22 @@ recommendations = pump_selector.get_recommendation(
     water_profile=db_fluid_profile
 )
 
-if recommendations is not pd.DataFrame or recommendations.empty:
-    st.error("❌ **No Single Pump Matches These Parameters Natively:** Your current lift or volume demands exceed single-stage boundaries. Consider a multi-pump series (staging layout), expanding your pipe diameter to drop friction head, or lower your target flow rate input.")
+if recommendations is None or recommendations.empty:
+    st.error("❌ **No Single Pump Matches This Operating Window Range:** Your current combination of flow and head requirements sits outside standard performance curves. Adjust your sliders (e.g., increase pipe diameter to lower friction head, or select a lower flow target) or plan a multi-pump mid-pit staging setup.")
 else:
-    st.success(f"✅ Found **{len(recommendations)} viable industry assets** matching or exceeding your system requirements:")
+    st.success(f"✅ Found **{len(recommendations)} standard industry assets** where your target requirements sit within optimal operational parameters:")
     
-    # Render out custom layout cards for matching pumps
     for idx, row in recommendations.iterrows():
-        with st.expander(f"👉 **{row['Manufacturer']} - {row['Model']}** (Viable Setup Option)"):
-            c_card1, c_card2 = st.columns([2, 1])
+        with st.expander(f"👉 **{row['Manufacturer']} - {row['Model']}** (Ideal Range Fit)"):
+            c_card1, c_card2 = st.columns(2)
             with c_card1:
                 st.markdown(f"**Operational Role:** {row['Best_For']}")
-                st.markdown(f"**Fluid Capability Classification:** Rated for `{row['Water_Type']}` conditions.")
-                st.markdown(f"**Max Permissible Solid Diameter:** Passing up to **{row['Max_Solids_mm']} mm** fragments clean.")
+                st.markdown(f"**Fluid Capability Classification:** Characterized for `{row['Water_Type']}` profiles.")
+                st.markdown(f"**Max Permissible Solid Diameter:** Passing up to **{row['Max_Solids_mm']} mm** fragments.")
             with c_card2:
-                st.metric("Max Rated Head", f"{row['Max_Head_m']} m")
-                st.metric("Max Rated Flow", f"{row['Max_Flow_m3h']} m³/h")
+                st.markdown(f"📊 **Engineered Operational Window Range:**")
+                st.markdown(f"*   **Optimal Head Range:** `{row['Min_Head_m']} m` up to `{row['Max_Head_m']} m`")
+                st.markdown(f"*   **Optimal Flow Range:** `{row['Min_Flow_m3h']} m³/h` up to `{row['Max_Flow_m3h']} m³/h`")
                 st.caption(f"🔧 **Drive Layout:** {row['Drive_Type']}")
 
 st.divider()
@@ -205,29 +223,3 @@ with col_gen:
     motor_efficiency = 0.85
     generator_power_kva = (estimated_power_kw / motor_efficiency) * 1.25 / 0.8 
     st.metric("Minimum Recommended Genset", f"{generator_power_kva:.0f} kVA")
-    st.caption("💡 *Includes safety buffer for motor startup surge loads.*")
-
-with col_vel:
-    st.markdown("#### Pipeline Velocity Check")
-    pipe_radius_m = (pipe_dia / 1000.0) / 2.0
-    cross_section_area = math.pi * (pipe_radius_m ** 2)
-    velocity_mps = (flow_target / 1000.0) / cross_section_area
-    st.metric("Calculated Flow Velocity", f"{velocity_mps:.2f} m/s")
-    if velocity_mps < 1.0:
-        st.warning("⚠️ **Too Low (< 1.0 m/s):** Solids may settle out.")
-    elif velocity_mps > 3.5:
-        st.error("⚠️ **Too High (> 3.5 m/s):** High risk of erosion.")
-    else:
-        st.success("✅ **Optimal Velocity:** Ideal range (1.0 - 3.5 m/s).")
-
-with col_press:
-    st.markdown("#### Pipe Pressure Advisor")
-    if pn_status == "Success":
-        st.metric("Minimum Pipe Rating", recommended_pn, delta=f"{tdh_bar:.1f} bar req.")
-        st.success("✅ Safe using standard poly lines.")
-    elif pn_status == "Warning":
-        st.metric("Minimum Pipe Rating", recommended_pn, delta=f"{tdh_bar:.1f} bar req.", delta_color="inverse")
-        st.warning("⚠️ Heavy wall HDPE required.")
-    else:
-        st.metric("Pressure Error", recommended_pn, delta=f"{tdh_bar:.1f} bar!", delta_color="inverse")
-        st.error("🚨 OVERPRESSURE: Needs multi-stage setup!")
