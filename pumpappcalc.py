@@ -9,10 +9,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CLASS DEFINITION: PUMP RANGE DATABASE ---
+# --- CLASS DEFINITION: ADVANCED PERFORMANCE RANGE DATABASE ---
 class MinePumpDatabase:
     def __init__(self):
-        # Initializing manufacturer datasets with standard operating ranges
         self.pumps_db = [
             {
                 "Manufacturer": "Weir Minerals (Warman)",
@@ -106,35 +105,34 @@ class MinePumpDatabase:
 # --- INIT DATABASE ---
 pump_selector = MinePumpDatabase()
 
-st.title("Open-Pit Sump Dewatering & Pump Sizer")
-st.markdown("A practical layout estimator built to quickly calculate pipeline length, estimate pipe pressure, and find matching catalog pumps.")
+st.title("⛏️ Open-Pit Sump Dewatering & Pump Sizer")
+st.markdown("A practical sizing tool built for non-specialists to automatically calculate geometric lengths, map performance ranges, and select matching industry pumps.")
 
 # --- SIDEBAR: INPUTS ---
-st.sidebar.header("1. Water & Flow Settings")
-flow_target = st.sidebar.number_input("Target Pumping Speed (Litres per second)", value=30.0, step=5.0, format="%.1f")
+st.sidebar.header("1. Site & Fluid Inputs")
+flow_target = st.sidebar.number_input("Target Pumping Rate (L/s)", value=30.0, step=5.0, format="%.1f")
 fluid_type = st.sidebar.selectbox("Water Condition", ["Clean / Rainwater", "Light Mud / Silty", "Heavy Slurry / Gritty"])
 
-st.sidebar.header("2. Pit Elevations & Layout")
+st.sidebar.header("2. Geometry & Pit Layout")
 sump_rl = st.sidebar.number_input("Sump Floor Level (RL in meters)", value=100.0, step=1.0)
-discharge_rl = st.sidebar.number_input("Surface Discharge Point (RL in meters)", value=220.0, step=1.0)
+discharge_rl = st.sidebar.number_input("Surface Discharge Point Level (RL in meters)", value=220.0, step=1.0)
 
 # AUTOMATED PIPE LENGTH LOGIC BASED ON HEIGHT DIFFERENCE
 static_head = discharge_rl - sump_rl
 
 if static_head <= 0:
-    st.sidebar.error("The surface discharge level must be higher than the sump level.")
+    st.sidebar.error("Discharge RL must be higher than Sump RL.")
     static_head = 1.0
 
-# 1:10 standard ramp gradient calculation
 base_ramp_length = static_head * 10.0
-st.sidebar.markdown(f"**Estimated Pit Ramp Distance:** `{base_ramp_length:.0f} m` *(assumes standard 1:10 haul road ramp)*")
-pipe_slack_m = st.sidebar.number_input("Extra Pipe for Flat Ground / Bends (m)", value=50.0, step=10.0)
+st.sidebar.markdown(f"**Calculated Minimum Ramp Pipe Length:** `{base_ramp_length:.0f} m` *(based on 1:10 haul road gradient)*")
+pipe_slack_m = st.sidebar.number_input("Additional Pipe Slack / Surface Run (m)", value=50.0, step=10.0)
 
 # Unified layout length used across all hydraulic math equations
 pipe_length = base_ramp_length + pipe_slack_m
-pipe_dia = st.sidebar.selectbox("Poly (HDPE) Pipe Diameter (mm)", [100, 150, 200, 250, 300], index=1)
+pipe_dia = st.sidebar.selectbox("HDPE Pipe Diameter (mm)",, index=1)
 
-# --- STAGING LOGIC ---
+# --- STAGING & ENVELOPE REDIRECT LOGIC ---
 SINGLE_STAGE_MAX_HEAD = 130.0
 is_multistage_required = static_head > SINGLE_STAGE_MAX_HEAD
 
@@ -144,7 +142,7 @@ if is_multistage_required:
 else:
     active_calc_head = static_head
 
-# --- CALCULATIONS ---
+# --- HYDRAULIC CALCULATIONS ---
 viscosity_multiplier = {
     "Clean / Rainwater": 1.0, 
     "Light Mud / Silty": 1.15, 
@@ -156,9 +154,10 @@ friction_loss = (pipe_length / 100.0) * (flow_target / pipe_dia) * 2.2 * viscosi
 tdh = active_calc_head + friction_loss
 estimated_power_kw = (flow_target * tdh * 9.81) / (1000 * 0.65)
 
-# --- PIPE PRESSURE ADVISOR CALCULATIONS ---
+# --- PIPE PRESSURE RATING ADVISOR CALCULATIONS ---
 tdh_bar = tdh / 10.197
 
+# Map corresponding structural SDR ratios based on the target PN pressure rating
 if tdh_bar <= 6.0:
     recommended_pn = "PN6"
     sdr_val = 26.0
@@ -176,35 +175,40 @@ elif tdh_bar <= 20.0:
     sdr_val = 9.0
     pn_status = "Warning"
 else:
-    recommended_pn = "EXCEEDS STANDARD LIMITS"
+    recommended_pn = "EXCEEDS STANDARD HDPE"
     sdr_val = 7.4
     pn_status = "Critical"
 
-# --- PIPE WEIGHT CALCULATIONS ---
+# --- DYNAMIC RE-CALCULATED WEIGHT PATTERNS BASED ON TRUE PN RATING ---
+# Poly wall thickness equation: thickness = OD / SDR
 calculated_wall_thickness = pipe_dia / sdr_val
 calculated_internal_dia = pipe_dia - (2.0 * calculated_wall_thickness)
+
+# Poly material physical volume weight equation loop (Density of PE100 = 0.955 g/cm³ or 955 kg/m³)
 cross_section_poly_area_m2 = (math.pi / 4.0) * (((pipe_dia / 1000.0)**2) - ((calculated_internal_dia / 1000.0)**2))
 unit_weight_kg_m = cross_section_poly_area_m2 * 955.0
+
+# Calculate layout totals
 total_pipeline_weight_kg = pipe_length * unit_weight_kg_m
 total_pipeline_weight_tonnes = total_pipeline_weight_kg / 1000.0
 
 # --- MAIN PANEL: RESULTS ---
-st.subheader("System Results Summary")
+st.subheader("📊 System & Head Results")
 
 if is_multistage_required:
-    st.error(f"Setup Warning: The vertical lift ({static_head:.0f}m) is too high for a standard single pump setup ({SINGLE_STAGE_MAX_HEAD:.0f}m limit). The calculations below have been limited to a Single Stage layout. You will need to add a second booster pump station around RL {recommended_booster_rl:.0f}m.")
+    st.warning(f"🚨 **Multi-Stage Staging System Advised:** Total vertical lift ({static_head:.0f}m) exceeds efficient single-stage mining boundaries ({SINGLE_STAGE_MAX_HEAD:.0f}m). **Downstream calculations have been auto-bounded to a Single Stage execution.** You must install a mid-pit booster staging station at or below **RL {recommended_booster_rl:.0f}m**.")
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Pumping Speed", f"{flow_target:.1f} L/s", delta=f"{flow_m3h:.0f} m³/h equivalent")
-col2.metric("Total Pumping Head", f"{tdh:.1f} m", delta=f"Includes {friction_loss:.1f}m pipe friction")
-col3.metric("Total Pipe Needed", f"{pipe_length:.0f} m", delta=f"Vertical Lift: {static_head:.0f}m")
-col4.metric("Estimated Motor Power", f"{estimated_power_kw:.1f} kW")
+col1.metric("Required Flow Window", f"{flow_target:.1f} L/s", delta=f"{flow_m3h:.0f} m³/h equivalent")
+col2.metric("Total Dynamic Head (TDH)", f"{tdh:.1f} m", delta=f"Single Stage Target Lift: {active_calc_head:.0f}m")
+col3.metric("Auto Pipe Length", f"{pipe_length:.0f} m", delta=f"Total Total Lift: {static_head:.0f}m")
+col4.metric("Est. Shaft Power", f"{estimated_power_kw:.1f} kW")
 
 st.divider()
 
-# --- RECONCILED PUMP SELECTIONS ---
-st.subheader("Recommended Supplier Pump Models")
-st.markdown("These industrial pumps from major brands can handle your setup requirements comfortably within their normal operating windows:")
+# --- AUTOMATED RANGE-BASED MATCH RECOMMENDATIONS ---
+st.subheader("🏆 Performance Window Range Match Matrix")
+st.markdown("The algorithm screens manufacturer operating windows to find single-stage pumps matching your calculated target boundaries:")
 
 db_fluid_profile = "Clear" if "Clean" in fluid_type else ("Slurry" if "Heavy" in fluid_type else "Dirty")
 
@@ -215,17 +219,11 @@ recommendations = pump_selector.get_recommendation(
 )
 
 if recommendations is None or recommendations.empty:
-    st.error("No Single Pump Matches: Your setup demands sit outside normal equipment ranges. Try choosing a larger pipe diameter to reduce friction pressure, or lower your target pumping speed.")
+    st.error("❌ **No Single Pump Matches This Operating Window Range:** Your current combination of flow and head requirements sits outside standard performance curves. Adjust your sliders (e.g., increase pipe diameter to lower friction head, or select a lower flow target) or plan an aggressive multi-pump mid-pit staging setup.")
 else:
-    st.success(f"Found {len(recommendations)} standard industry models capable of running this line setup:")
+    st.success(f"✅ Found **{len(recommendations)} standard industry assets** compatible with your single-stage design curve specs:")
     
     for idx, row in recommendations.iterrows():
-        with st.expander(f"{row['Manufacturer']} — {row['Model']}"):
+        with st.expander(f"👉 **{row['Manufacturer']} - {row['Model']}** (Ideal Range Fit)"):
             c_card1, c_card2 = st.columns(2)
             with c_card1:
-                st.markdown(f"**What it's used for:** {row['Best_For']}")
-                st.markdown(f"**Water capability:** Safe for `{row['Water_Type']}` conditions.")
-                st.markdown(f"**Maximum solid size:** Can pass dirt/debris up to **{row['Max_Solids_mm']} mm**.")
-            with c_card2:
-                st.markdown(f"**Pump Capabilities:**")
-                st.markdown(f"*   **Safe Head Range:** `{row['Min_Head_m']} m` to `{row['Max_Head_m']} m`")
